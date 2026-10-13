@@ -1,11 +1,11 @@
-# CC-SWITCH Config Import
+# AI Config Importer
 
 The plugin uses the official CC-SWITCH application icon from the public
 [CC-SWITCH repository](https://github.com/farion1231/cc-switch).
 
-This public DBX plugin imports AI provider configurations from the local
-CC-SWITCH SQLite database. The source is public because the plugin handles API
-keys while reading the database.
+This public DBX plugin imports AI provider configurations from CC-SWITCH into
+DBX. It reads the local CC-SWITCH SQLite database. The source is public because
+the plugin handles API keys while reading the database.
 
 The DBX host supplies the database path through the `ai-config-import`
 capability. The importer opens the database read-only and returns the DBX AI
