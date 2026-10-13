@@ -2,10 +2,10 @@
   "$schema": "https://raw.githubusercontent.com/t8y2/dbx/main/plugins/manifest.schema.json",
   "manifest_version": 1,
   "id": "cc-switch",
-  "name": "CC-SWITCH Config Import",
-  "version": "0.1.3",
+  "name": "AI Config Importer",
+  "version": "0.1.4",
   "publisher": "ma123456mai",
-  "description": "Import AI provider configurations from the local CC-SWITCH database.",
+  "description": "Import AI provider configurations from CC-SWITCH into DBX.",
   "icon": "assets/plugin.png",
   "source": "https://github.com/ma123456mai/dbx-cc-switch-plugin",
   "homepage": "https://github.com/ma123456mai/dbx-cc-switch-plugin",
@@ -28,8 +28,8 @@
   ],
   "localizations": {
     "zh-CN": {
-      "name": "CC-SWITCH 配置导入",
-      "description": "从本机 CC-SWITCH 数据库导入 AI 提供商配置。"
+      "name": "AI 配置导入",
+      "description": "从 CC-SWITCH 导入 AI 提供商配置到 DBX。"
     }
   }
 }
