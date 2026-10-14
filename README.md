@@ -18,15 +18,22 @@ model lists and custom headers are preserved; an empty model list stays empty.
 
 The native candidate is built for the DBX Store targets currently supported by
 the release workflow: `darwin-arm64`, `darwin-x64`, `windows-x64`, `linux-x64`,
-and `linux-arm64`.
+and `linux-arm64`. Release artifacts use the `ai-config-importer-<version>-<target>`
+filename while retaining the stable `cc-switch` plugin ID for existing installs.
 
 ## Development
 
 Install the DBX plugin CLI, then run:
 
 ```bash
-dbx-plugin package .
+node scripts/package-plugin.mjs
 ```
+
+This project command packages the plugin and renames the generated package and
+metadata files to the `ai-config-importer-<version>-<target>` prefix. The
+release workflow uses the same command automatically. The manifest ID remains
+`cc-switch`, so DBX continues to recognize existing installations as the same
+plugin when upgrading.
 
 This creates an unsigned, target-specific `.dbxp` candidate and matching
 `.artifact.json` in `dist/`. Native candidates must be built separately on
