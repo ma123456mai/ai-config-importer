@@ -585,6 +585,42 @@ mod tests {
     }
 
     #[test]
+    fn imports_multiple_profiles_for_the_same_app_type() {
+        let connection = create_providers_database();
+        connection
+            .execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, sort_index, is_current)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    "codex-backup",
+                    "codex",
+                    "Codex Backup",
+                    serde_json::json!({
+                        "auth": { "OPENAI_API_KEY": "backup-key" },
+                        "config": "model_provider = \"backup\"\nmodel = \"gpt-backup\"\n[model_providers.backup]\nbase_url = \"https://backup.example\"\nrequires_openai_auth = true\n"
+                    })
+                    .to_string(),
+                    1,
+                    0
+                ],
+            )
+            .unwrap();
+
+        let result = import_from_connection(&connection).unwrap();
+
+        assert_eq!(result.configs.len(), 4);
+        assert_eq!(
+            result
+                .configs
+                .iter()
+                .filter(|config| config.name.starts_with("Codex"))
+                .map(|config| config.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Codex Gateway", "Codex Backup"]
+        );
+    }
+
+    #[test]
     fn rejects_database_without_providers_table() {
         let connection = Connection::open_in_memory().unwrap();
         assert_eq!(import_from_connection(&connection).unwrap_err(), "ccSwitchInvalidDatabase");
