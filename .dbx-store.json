@@ -4,8 +4,8 @@
   "icon": "assets/plugin.png",
   "tags": ["ai", "configuration", "cc-switch"],
   "permissions": [],
-  "source": "https://github.com/ma123456mai/dbx-cc-switch-plugin/tree/v0.1.4",
-  "homepage": "https://github.com/ma123456mai/dbx-cc-switch-plugin",
+  "source": "https://github.com/ma123456mai/ai-config-importer/tree/v0.1.4",
+  "homepage": "https://github.com/ma123456mai/ai-config-importer",
   "license": "Apache-2.0",
   "releaseNotes": "Rename the plugin to AI Config Importer. Import AI provider configurations from CC-SWITCH into DBX.",
   "localizations": {

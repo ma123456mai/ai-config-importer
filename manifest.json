@@ -7,8 +7,8 @@
   "publisher": "ma123456mai",
   "description": "Import AI provider configurations from CC-SWITCH into DBX.",
   "icon": "assets/plugin.png",
-  "source": "https://github.com/ma123456mai/dbx-cc-switch-plugin",
-  "homepage": "https://github.com/ma123456mai/dbx-cc-switch-plugin",
+  "source": "https://github.com/ma123456mai/ai-config-importer",
+  "homepage": "https://github.com/ma123456mai/ai-config-importer",
   "engines": {
     "dbx": ">=0.6.15",
     "host_api": "1"
