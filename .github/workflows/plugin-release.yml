@@ -12,7 +12,7 @@ jobs:
     uses: t8y2/dbx/.github/workflows/plugin-release-reusable.yml@main
     with:
       release-tag: ${{ github.event.release.tag_name }}
-      package-command: dbx-plugin package .
+      package-command: node scripts/package-plugin.mjs
       package-path: dist/*.dbxp
       metadata-path: dist/*.artifact.json
       install-plugin-cli-from-source: true

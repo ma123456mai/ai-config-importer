@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::path::Path;
 
 use dbx_plugin_sdk::{PluginHandler, PluginMetadata, PluginServer, RequestContext};
@@ -11,11 +12,88 @@ const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-4-20250514";
 const DEFAULT_GEMINI_ENDPOINT: &str = "https://generativelanguage.googleapis.com";
 const DEFAULT_GEMINI_MODEL: &str = "gemini-2.5-flash";
 const IMPORT_METHOD: &str = "import_ai_configs";
+const IMPORT_MAGPIE_METHOD: &str = "import_magpie_ai_configs";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ImportRequest {
     database_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MagpieImportRequest {
+    config_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MagpieConfig {
+    providers: Vec<MagpieProvider>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct MagpieProvider {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    key: String,
+    #[serde(default)]
+    key_name: String,
+    #[serde(default)]
+    key_protocol: String,
+    #[serde(default)]
+    auth_header: String,
+    #[serde(default)]
+    chat: String,
+    #[serde(default)]
+    responses: String,
+    #[serde(default)]
+    anthropic: String,
+    #[serde(default)]
+    gemini: String,
+    #[serde(default)]
+    models: Vec<String>,
+    #[serde(default)]
+    hidden: bool,
+    #[serde(default)]
+    off: bool,
+    #[serde(default)]
+    no_models: bool,
+    #[serde(default)]
+    headers: HashMap<String, String>,
+    #[serde(default)]
+    keys: Vec<MagpieKey>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct MagpieKey {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    key: String,
+    #[serde(default)]
+    protocol: String,
+    #[serde(default)]
+    off: bool,
+}
+
+#[derive(Debug)]
+struct MagpieApiKey {
+    name: String,
+    value: String,
+    protocol: String,
+}
+
+#[derive(Debug)]
+struct MagpieImportCandidate {
+    config: AiConfig,
+    key_name: String,
+    protocol_name: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -116,18 +194,31 @@ impl PluginHandler for Importer {
         _emitter: &dbx_plugin_sdk::PluginEmitter,
     ) -> Result<Value, dbx_plugin_sdk::PluginError> {
         if method != IMPORT_METHOD {
-            return Err(dbx_plugin_sdk::PluginError::method_not_found(method));
+            if method != IMPORT_MAGPIE_METHOD {
+                return Err(dbx_plugin_sdk::PluginError::method_not_found(method));
+            }
+            let request: MagpieImportRequest = serde_json::from_value(params)
+                .map_err(|error| dbx_plugin_sdk::PluginError::new(-32602, error.to_string()))?;
+            let result = import_magpie_from_path(Path::new(&request.config_path))
+                .map_err(|error| dbx_plugin_sdk::PluginError::new(-32010, error))?;
+            return serde_json::to_value(result)
+                .map_err(|error| dbx_plugin_sdk::PluginError::new(-32603, error.to_string()));
         }
         let request: ImportRequest = serde_json::from_value(params)
             .map_err(|error| dbx_plugin_sdk::PluginError::new(-32602, error.to_string()))?;
         let result = import_from_path(Path::new(&request.database_path))
             .map_err(|error| dbx_plugin_sdk::PluginError::new(-32010, error))?;
-        serde_json::to_value(result).map_err(|error| dbx_plugin_sdk::PluginError::new(-32603, error.to_string()))
+        serde_json::to_value(result)
+            .map_err(|error| dbx_plugin_sdk::PluginError::new(-32603, error.to_string()))
     }
 }
 
 fn main() -> std::io::Result<()> {
-    PluginServer::new(PluginMetadata::new("cc-switch", "0.1.4").with_capability("ai-config-import"), Importer).serve()
+    PluginServer::new(
+        PluginMetadata::new("cc-switch", "0.2.0").with_capability("ai-config-import"),
+        Importer,
+    )
+    .serve()
 }
 
 fn import_from_path(path: &Path) -> Result<ImportResult, String> {
@@ -137,6 +228,251 @@ fn import_from_path(path: &Path) -> Result<ImportResult, String> {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|error| format!("ccSwitchOpenFailed:{error}"))?;
     import_from_connection(&connection)
+}
+
+fn import_magpie_from_path(path: &Path) -> Result<ImportResult, String> {
+    if !path.is_file() {
+        return Err("magpieNotInstalled".to_string());
+    }
+    let contents = fs::read_to_string(path).map_err(|_| "magpieReadFailed".to_string())?;
+    let config: MagpieConfig =
+        serde_json::from_str(&contents).map_err(|_| "magpieInvalidConfig".to_string())?;
+    import_magpie_config(config)
+}
+
+fn import_magpie_config(config: MagpieConfig) -> Result<ImportResult, String> {
+    let mut result = ImportResult {
+        configs: Vec::new(),
+        skipped: Vec::new(),
+    };
+    for (provider_index, provider) in config.providers.into_iter().enumerate() {
+        if provider.hidden || provider.off {
+            continue;
+        }
+        let provider_name = non_empty(provider.name.trim())
+            .or_else(|| non_empty(provider.id.trim()))
+            .unwrap_or("Magpie")
+            .to_string();
+        if provider.no_models {
+            result.skipped.push(ImportSkipped {
+                app_type: "magpie".to_string(),
+                name: provider_name,
+                reason: "magpieProviderHasNoModels".to_string(),
+            });
+            continue;
+        }
+
+        let api_keys = magpie_api_keys(&provider);
+        if api_keys.is_empty() {
+            result.skipped.push(ImportSkipped {
+                app_type: "magpie".to_string(),
+                name: provider_name,
+                reason: "magpieProviderNotConfigured".to_string(),
+            });
+            continue;
+        }
+
+        let endpoints = magpie_endpoints(&provider);
+        let models = magpie_models(&provider);
+        let model = models
+            .first()
+            .map(|item| item.name.clone())
+            .unwrap_or_default();
+        let mut candidates = Vec::new();
+        for (key_index, api_key) in api_keys.iter().enumerate() {
+            let matching_endpoints: Vec<_> = endpoints
+                .iter()
+                .filter(|endpoint| {
+                    (api_key.protocol.is_empty()
+                        || api_key.protocol.eq_ignore_ascii_case(endpoint.protocol))
+                        && !(api_key.value.is_empty() && endpoint.protocol == "gemini")
+                })
+                .collect();
+            for endpoint in matching_endpoints {
+                let mut custom_headers = provider.headers.clone();
+                let auth_method = match endpoint.protocol {
+                    "anthropic" if provider.auth_header.eq_ignore_ascii_case("bearer") => {
+                        AiAuthMethod::Bearer
+                    }
+                    "anthropic" => {
+                        if provider.auth_header.eq_ignore_ascii_case("both") {
+                            custom_headers.insert(
+                                "Authorization".to_string(),
+                                format!("Bearer {}", api_key.value),
+                            );
+                        }
+                        AiAuthMethod::ApiKey
+                    }
+                    "gemini" => AiAuthMethod::ApiKey,
+                    _ => AiAuthMethod::Bearer,
+                };
+                let ai_provider = if api_key.value.is_empty() && endpoint.protocol == "anthropic" {
+                    AiProvider::AnthropicCompatible
+                } else {
+                    endpoint.provider.clone()
+                };
+                let mut config = new_config(
+                    ai_provider,
+                    api_key.value.clone(),
+                    endpoint.url.to_string(),
+                    model.clone(),
+                    endpoint.api_style.clone(),
+                    auth_method,
+                );
+                config.models = models.clone();
+                config.custom_headers = custom_headers;
+                candidates.push(MagpieImportCandidate {
+                    config,
+                    key_name: if api_key.name.trim().is_empty() {
+                        format!("Key {}", key_index + 1)
+                    } else {
+                        api_key.name.trim().to_string()
+                    },
+                    protocol_name: endpoint.name,
+                });
+            }
+        }
+
+        if candidates.is_empty() {
+            result.skipped.push(ImportSkipped {
+                app_type: "magpie".to_string(),
+                name: provider_name,
+                reason: if endpoints.is_empty() {
+                    "magpieProviderNotConfigured".to_string()
+                } else {
+                    "magpieNoCompatibleEndpoint".to_string()
+                },
+            });
+            continue;
+        }
+
+        let use_suffix = candidates.len() > 1;
+        for (candidate_index, candidate) in candidates.into_iter().enumerate() {
+            let name = if use_suffix {
+                format!(
+                    "{} ({} · {})",
+                    provider_name, candidate.key_name, candidate.protocol_name
+                )
+            } else {
+                provider_name.clone()
+            };
+            result.configs.push(AiConfigItem {
+                id: format!("magpie-{provider_index}-{candidate_index}"),
+                name,
+                is_default: false,
+                config: candidate.config,
+            });
+        }
+    }
+    Ok(result)
+}
+
+fn non_empty(value: &str) -> Option<&str> {
+    (!value.is_empty()).then_some(value)
+}
+
+fn magpie_api_keys(provider: &MagpieProvider) -> Vec<MagpieApiKey> {
+    let mut api_keys = Vec::new();
+    if !provider.key.trim().is_empty() {
+        api_keys.push(MagpieApiKey {
+            name: provider.key_name.trim().to_string(),
+            value: provider.key.trim().to_string(),
+            protocol: provider.key_protocol.trim().to_string(),
+        });
+    }
+    for key in &provider.keys {
+        if key.off || key.key.trim().is_empty() {
+            continue;
+        }
+        api_keys.push(MagpieApiKey {
+            name: key.name.trim().to_string(),
+            value: key.key.trim().to_string(),
+            protocol: key.protocol.trim().to_string(),
+        });
+    }
+    // A provider without any saved key entries can still be a keyless local
+    // endpoint. If key records exist but are all disabled or empty, preserve
+    // that disabled state instead of turning it into a keyless config.
+    if api_keys.is_empty() && provider.keys.is_empty() {
+        api_keys.push(MagpieApiKey {
+            name: String::new(),
+            value: String::new(),
+            protocol: provider.key_protocol.trim().to_string(),
+        });
+    }
+    api_keys
+}
+
+struct MagpieEndpoint<'a> {
+    protocol: &'static str,
+    name: &'static str,
+    url: &'a str,
+    provider: AiProvider,
+    api_style: AiApiStyle,
+}
+
+fn magpie_endpoints(provider: &MagpieProvider) -> Vec<MagpieEndpoint<'_>> {
+    let mut endpoints = Vec::new();
+    for (protocol, name, url, ai_provider, api_style) in [
+        (
+            "chat",
+            "Chat Completions",
+            provider.chat.as_str(),
+            AiProvider::OpenaiCompatible,
+            AiApiStyle::Completions,
+        ),
+        (
+            "responses",
+            "Responses",
+            provider.responses.as_str(),
+            AiProvider::OpenaiCompatible,
+            AiApiStyle::Responses,
+        ),
+        (
+            "anthropic",
+            "Anthropic Messages",
+            provider.anthropic.as_str(),
+            if is_default_anthropic_endpoint(&provider.anthropic) {
+                AiProvider::Claude
+            } else {
+                AiProvider::AnthropicCompatible
+            },
+            AiApiStyle::AnthropicMessages,
+        ),
+        (
+            "gemini",
+            "Gemini",
+            provider.gemini.as_str(),
+            AiProvider::Gemini,
+            AiApiStyle::Completions,
+        ),
+    ] {
+        if !url.trim().is_empty() {
+            endpoints.push(MagpieEndpoint {
+                protocol,
+                name,
+                url,
+                provider: ai_provider,
+                api_style,
+            });
+        }
+    }
+    endpoints
+}
+
+fn magpie_models(provider: &MagpieProvider) -> Vec<AiModelListItem> {
+    provider
+        .models
+        .iter()
+        .filter_map(|model| {
+            let name = model.trim();
+            (!name.is_empty()).then(|| AiModelListItem {
+                name: name.to_string(),
+                label: None,
+                supported_effort_levels: Vec::new(),
+            })
+        })
+        .collect()
 }
 
 fn import_from_connection(connection: &Connection) -> Result<ImportResult, String> {
@@ -160,12 +496,22 @@ fn import_from_connection(connection: &Connection) -> Result<ImportResult, Strin
         )
         .map_err(|error| format!("ccSwitchReadFailed:{error}"))?;
     let rows = statement
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)))
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
         .map_err(|error| format!("ccSwitchReadFailed:{error}"))?;
 
-    let mut result = ImportResult { configs: Vec::new(), skipped: Vec::new() };
+    let mut result = ImportResult {
+        configs: Vec::new(),
+        skipped: Vec::new(),
+    };
     for row in rows {
-        let (app_type, name, settings_config) = row.map_err(|error| format!("ccSwitchReadFailed:{error}"))?;
+        let (app_type, name, settings_config) =
+            row.map_err(|error| format!("ccSwitchReadFailed:{error}"))?;
         match import_provider(&app_type, &settings_config) {
             Ok(Some(config)) => result.configs.push(AiConfigItem {
                 id: format!("cc-switch-{app_type}-{}", result.configs.len()),
@@ -178,15 +524,19 @@ fn import_from_connection(connection: &Connection) -> Result<ImportResult, Strin
                 name,
                 reason: "ccSwitchProviderNotConfigured".to_string(),
             }),
-            Err(reason) => result.skipped.push(ImportSkipped { app_type, name, reason }),
+            Err(reason) => result.skipped.push(ImportSkipped {
+                app_type,
+                name,
+                reason,
+            }),
         }
     }
     Ok(result)
 }
 
 fn import_provider(app_type: &str, raw_settings: &str) -> Result<Option<AiConfig>, String> {
-    let settings: Value =
-        serde_json::from_str(raw_settings).map_err(|_| "ccSwitchInvalidProviderConfig".to_string())?;
+    let settings: Value = serde_json::from_str(raw_settings)
+        .map_err(|_| "ccSwitchInvalidProviderConfig".to_string())?;
     match app_type {
         "codex" => import_codex(&settings),
         "claude" => import_claude(&settings),
@@ -196,7 +546,10 @@ fn import_provider(app_type: &str, raw_settings: &str) -> Result<Option<AiConfig
 }
 
 fn import_codex(settings: &Value) -> Result<Option<AiConfig>, String> {
-    let config_text = settings.get("config").and_then(Value::as_str).unwrap_or_default();
+    let config_text = settings
+        .get("config")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let document = parse_codex_toml(config_text)?;
     let model_provider = document
         .string("model_provider")
@@ -206,20 +559,39 @@ fn import_codex(settings: &Value) -> Result<Option<AiConfig>, String> {
     let endpoint = document
         .string(&format!("{provider_section}.base_url"))
         .or_else(|| document.string("base_url"))
-        .or_else(|| find_string(settings, &["base_url", "baseUrl", "OPENAI_BASE_URL"], &["auth", "env", "config"]));
-    let model = document
-        .string("model")
-        .or_else(|| find_string(settings, &["model", "model_name", "modelName"], &["config", "env"]));
-    let api_key =
-        find_named_string(settings, &["OPENAI_API_KEY", "api_key", "apiKey", "API_KEY"], &["auth", "env", "config"]);
-    let requires_openai_auth = document.bool(&format!("{provider_section}.requires_openai_auth")).unwrap_or(false);
+        .or_else(|| {
+            find_string(
+                settings,
+                &["base_url", "baseUrl", "OPENAI_BASE_URL"],
+                &["auth", "env", "config"],
+            )
+        });
+    let model = document.string("model").or_else(|| {
+        find_string(
+            settings,
+            &["model", "model_name", "modelName"],
+            &["config", "env"],
+        )
+    });
+    let api_key = find_named_string(
+        settings,
+        &["OPENAI_API_KEY", "api_key", "apiKey", "API_KEY"],
+        &["auth", "env", "config"],
+    );
+    let requires_openai_auth = document
+        .bool(&format!("{provider_section}.requires_openai_auth"))
+        .unwrap_or(false);
     let Some(endpoint) = endpoint.filter(|value| !value.trim().is_empty()) else {
         return Ok(None);
     };
     let Some(model) = model.filter(|value| !value.trim().is_empty()) else {
         return Ok(None);
     };
-    if requires_openai_auth && api_key.as_ref().is_none_or(|(_, value)| value.trim().is_empty()) {
+    if requires_openai_auth
+        && api_key
+            .as_ref()
+            .is_none_or(|(_, value)| value.trim().is_empty())
+    {
         return Ok(None);
     }
     let api_style = document
@@ -241,27 +613,60 @@ fn import_codex(settings: &Value) -> Result<Option<AiConfig>, String> {
 fn import_claude(settings: &Value) -> Result<Option<AiConfig>, String> {
     let api_key = find_named_string(
         settings,
-        &["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "api_key", "apiKey", "API_KEY"],
+        &[
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "api_key",
+            "apiKey",
+            "API_KEY",
+        ],
         &["env", "auth", "config"],
     );
     let Some((key_name, api_key)) = api_key.filter(|(_, value)| !value.trim().is_empty()) else {
         return Ok(None);
     };
-    let endpoint = find_string(settings, &["ANTHROPIC_BASE_URL", "base_url", "baseUrl"], &["env", "auth", "config"])
-        .unwrap_or_else(|| DEFAULT_ANTHROPIC_ENDPOINT.to_string());
-    let model = find_string(settings, &["ANTHROPIC_MODEL", "model", "model_name", "modelName"], &["env", "config"])
-        .unwrap_or_else(|| DEFAULT_ANTHROPIC_MODEL.to_string());
-    let provider =
-        if is_default_anthropic_endpoint(&endpoint) { AiProvider::Claude } else { AiProvider::AnthropicCompatible };
-    let auth_method =
-        if key_name.eq_ignore_ascii_case("ANTHROPIC_AUTH_TOKEN") { AiAuthMethod::Bearer } else { AiAuthMethod::ApiKey };
-    Ok(Some(new_config(provider, api_key, endpoint, model, AiApiStyle::AnthropicMessages, auth_method)))
+    let endpoint = find_string(
+        settings,
+        &["ANTHROPIC_BASE_URL", "base_url", "baseUrl"],
+        &["env", "auth", "config"],
+    )
+    .unwrap_or_else(|| DEFAULT_ANTHROPIC_ENDPOINT.to_string());
+    let model = find_string(
+        settings,
+        &["ANTHROPIC_MODEL", "model", "model_name", "modelName"],
+        &["env", "config"],
+    )
+    .unwrap_or_else(|| DEFAULT_ANTHROPIC_MODEL.to_string());
+    let provider = if is_default_anthropic_endpoint(&endpoint) {
+        AiProvider::Claude
+    } else {
+        AiProvider::AnthropicCompatible
+    };
+    let auth_method = if key_name.eq_ignore_ascii_case("ANTHROPIC_AUTH_TOKEN") {
+        AiAuthMethod::Bearer
+    } else {
+        AiAuthMethod::ApiKey
+    };
+    Ok(Some(new_config(
+        provider,
+        api_key,
+        endpoint,
+        model,
+        AiApiStyle::AnthropicMessages,
+        auth_method,
+    )))
 }
 
 fn import_gemini(settings: &Value) -> Result<Option<AiConfig>, String> {
     let Some((_, api_key)) = find_named_string(
         settings,
-        &["GEMINI_API_KEY", "GOOGLE_API_KEY", "api_key", "apiKey", "API_KEY"],
+        &[
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "api_key",
+            "apiKey",
+            "API_KEY",
+        ],
         &["env", "auth", "config"],
     )
     .filter(|(_, value)| !value.trim().is_empty()) else {
@@ -269,13 +674,29 @@ fn import_gemini(settings: &Value) -> Result<Option<AiConfig>, String> {
     };
     let endpoint = find_string(
         settings,
-        &["GEMINI_BASE_URL", "GOOGLE_GEMINI_BASE_URL", "base_url", "baseUrl"],
+        &[
+            "GEMINI_BASE_URL",
+            "GOOGLE_GEMINI_BASE_URL",
+            "base_url",
+            "baseUrl",
+        ],
         &["env", "auth", "config"],
     )
     .unwrap_or_else(|| DEFAULT_GEMINI_ENDPOINT.to_string());
-    let model = find_string(settings, &["model", "model_name", "modelName", "GEMINI_MODEL"], &["config", "env"])
-        .unwrap_or_else(|| DEFAULT_GEMINI_MODEL.to_string());
-    Ok(Some(new_config(AiProvider::Gemini, api_key, endpoint, model, AiApiStyle::Completions, AiAuthMethod::ApiKey)))
+    let model = find_string(
+        settings,
+        &["model", "model_name", "modelName", "GEMINI_MODEL"],
+        &["config", "env"],
+    )
+    .unwrap_or_else(|| DEFAULT_GEMINI_MODEL.to_string());
+    Ok(Some(new_config(
+        AiProvider::Gemini,
+        api_key,
+        endpoint,
+        model,
+        AiApiStyle::Completions,
+        AiAuthMethod::ApiKey,
+    )))
 }
 
 fn new_config(
@@ -292,7 +713,11 @@ fn new_config(
         api_key,
         auth_method,
         endpoint: endpoint.trim().trim_end_matches('/').to_string(),
-        models: vec![AiModelListItem { name: model.clone(), label: None, supported_effort_levels: Vec::new() }],
+        models: vec![AiModelListItem {
+            name: model.clone(),
+            label: None,
+            supported_effort_levels: Vec::new(),
+        }],
         model,
         api_style,
         custom_headers: HashMap::new(),
@@ -314,7 +739,11 @@ fn find_string(settings: &Value, keys: &[&str], containers: &[&str]) -> Option<S
     find_named_string(settings, keys, containers).map(|(_, value)| value)
 }
 
-fn find_named_string(settings: &Value, keys: &[&str], containers: &[&str]) -> Option<(String, String)> {
+fn find_named_string(
+    settings: &Value,
+    keys: &[&str],
+    containers: &[&str],
+) -> Option<(String, String)> {
     for container in containers {
         if let Some(object) = settings.get(*container).and_then(Value::as_object) {
             if let Some(found) = object_string(object, keys) {
@@ -322,12 +751,18 @@ fn find_named_string(settings: &Value, keys: &[&str], containers: &[&str]) -> Op
             }
         }
     }
-    settings.as_object().and_then(|object| object_string(object, keys))
+    settings
+        .as_object()
+        .and_then(|object| object_string(object, keys))
 }
 
 fn object_string(object: &Map<String, Value>, keys: &[&str]) -> Option<(String, String)> {
-    keys.iter()
-        .find_map(|key| object.get(*key).and_then(Value::as_str).map(|value| ((*key).to_string(), value.to_string())))
+    keys.iter().find_map(|key| {
+        object
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(|value| ((*key).to_string(), value.to_string()))
+    })
 }
 
 #[derive(Default)]
@@ -368,7 +803,10 @@ fn parse_codex_toml(input: &str) -> Result<TomlDocument, String> {
         if line.starts_with('[') {
             let is_array = line.starts_with("[[");
             let (opening, closing) = if is_array { ("[[", "]]") } else { ("[", "]") };
-            let Some(header) = line.strip_prefix(opening).and_then(|value| value.strip_suffix(closing)) else {
+            let Some(header) = line
+                .strip_prefix(opening)
+                .and_then(|value| value.strip_suffix(closing))
+            else {
                 return Err("ccSwitchInvalidCodexConfig".to_string());
             };
             section = normalize_toml_key(header);
@@ -381,7 +819,11 @@ fn parse_codex_toml(input: &str) -> Result<TomlDocument, String> {
         if key.is_empty() {
             return Err("ccSwitchInvalidCodexConfig".to_string());
         }
-        let full_key = if section.is_empty() { key } else { format!("{section}.{key}") };
+        let full_key = if section.is_empty() {
+            key
+        } else {
+            format!("{section}.{key}")
+        };
         if let Some(value) = parse_toml_scalar(raw_value.trim()) {
             document.values.insert(full_key, value);
         }
@@ -404,7 +846,10 @@ fn parse_toml_string(value: &str) -> Option<String> {
     if value.starts_with('"') {
         return serde_json::from_str(value).ok();
     }
-    value.strip_prefix('\'').and_then(|value| value.strip_suffix('\'')).map(str::to_string)
+    value
+        .strip_prefix('\'')
+        .and_then(|value| value.strip_suffix('\''))
+        .map(str::to_string)
 }
 
 fn strip_toml_comment(line: &str) -> String {
@@ -436,13 +881,21 @@ fn strip_toml_comment(line: &str) -> String {
 }
 
 fn normalize_toml_key(key: &str) -> String {
-    key.split('.').map(str::trim).filter(|part| !part.is_empty()).map(unquote_toml_key).collect::<Vec<_>>().join(".")
+    key.split('.')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(unquote_toml_key)
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 fn unquote_toml_key(key: &str) -> String {
     key.strip_prefix('"')
         .and_then(|value| value.strip_suffix('"'))
-        .or_else(|| key.strip_prefix('\'').and_then(|value| value.strip_suffix('\'')))
+        .or_else(|| {
+            key.strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))
+        })
         .unwrap_or(key)
         .to_string()
 }
@@ -543,7 +996,10 @@ mod tests {
         assert_eq!(result.configs[0].config.model, "gpt-test");
         assert_eq!(result.configs[0].config.endpoint, "https://gateway.example");
         assert_eq!(result.configs[0].config.api_key, "secret");
-        assert!(matches!(result.configs[0].config.api_style, AiApiStyle::Responses));
+        assert!(matches!(
+            result.configs[0].config.api_style,
+            AiApiStyle::Responses
+        ));
     }
 
     #[test]
@@ -623,7 +1079,10 @@ mod tests {
     #[test]
     fn rejects_database_without_providers_table() {
         let connection = Connection::open_in_memory().unwrap();
-        assert_eq!(import_from_connection(&connection).unwrap_err(), "ccSwitchInvalidDatabase");
+        assert_eq!(
+            import_from_connection(&connection).unwrap_err(),
+            "ccSwitchInvalidDatabase"
+        );
     }
 
     #[test]
