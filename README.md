@@ -10,9 +10,11 @@ plugin opens it read-only. For Magpie, the plugin reads `providers.json` from
 `~/.config/magpie/providers.json` when `XDG_CONFIG_HOME` is not set. The plugin
 does not modify either source or send credentials over the network.
 
-Each configured Magpie API key is imported for each matching configured API
-protocol. Disabled keys and hidden providers are skipped. Provider model lists
-and custom headers are preserved; an empty model list stays empty.
+Each enabled Magpie API key is imported for each matching configured API
+protocol. Disabled keys, disabled providers, and hidden providers are skipped.
+OpenAI-compatible and Anthropic-compatible providers with no saved key entries
+can be imported as keyless endpoints; Gemini endpoints require a key. Provider
+model lists and custom headers are preserved; an empty model list stays empty.
 
 The native candidate is built for the DBX Store targets currently supported by
 the release workflow: `darwin-arm64`, `darwin-x64`, `windows-x64`, `linux-x64`,

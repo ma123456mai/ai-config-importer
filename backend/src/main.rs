@@ -60,9 +60,9 @@ struct MagpieProvider {
     #[serde(default)]
     hidden: bool,
     #[serde(default)]
-    no_models: bool,
+    off: bool,
     #[serde(default)]
-    no_api_key: bool,
+    no_models: bool,
     #[serde(default)]
     headers: HashMap<String, String>,
     #[serde(default)]
@@ -246,7 +246,7 @@ fn import_magpie_config(config: MagpieConfig) -> Result<ImportResult, String> {
         skipped: Vec::new(),
     };
     for (provider_index, provider) in config.providers.into_iter().enumerate() {
-        if provider.hidden {
+        if provider.hidden || provider.off {
             continue;
         }
         let provider_name = non_empty(provider.name.trim())
@@ -290,10 +290,11 @@ fn import_magpie_config(config: MagpieConfig) -> Result<ImportResult, String> {
                 .collect();
             for endpoint in matching_endpoints {
                 let mut custom_headers = provider.headers.clone();
-                let auth_method = if endpoint.protocol == "anthropic" {
-                    if provider.auth_header.eq_ignore_ascii_case("bearer") {
+                let auth_method = match endpoint.protocol {
+                    "anthropic" if provider.auth_header.eq_ignore_ascii_case("bearer") => {
                         AiAuthMethod::Bearer
-                    } else {
+                    }
+                    "anthropic" => {
                         if provider.auth_header.eq_ignore_ascii_case("both") {
                             custom_headers.insert(
                                 "Authorization".to_string(),
@@ -302,8 +303,8 @@ fn import_magpie_config(config: MagpieConfig) -> Result<ImportResult, String> {
                         }
                         AiAuthMethod::ApiKey
                     }
-                } else {
-                    AiAuthMethod::Bearer
+                    "gemini" => AiAuthMethod::ApiKey,
+                    _ => AiAuthMethod::Bearer,
                 };
                 let ai_provider = if api_key.value.is_empty() && endpoint.protocol == "anthropic" {
                     AiProvider::AnthropicCompatible
@@ -389,9 +390,12 @@ fn magpie_api_keys(provider: &MagpieProvider) -> Vec<MagpieApiKey> {
             protocol: key.protocol.trim().to_string(),
         });
     }
-    if api_keys.is_empty() && provider.no_api_key {
+    // A provider without any saved key entries can still be a keyless local
+    // endpoint. If key records exist but are all disabled or empty, preserve
+    // that disabled state instead of turning it into a keyless config.
+    if api_keys.is_empty() && provider.keys.is_empty() {
         api_keys.push(MagpieApiKey {
-            name: "No API key".to_string(),
+            name: String::new(),
             value: String::new(),
             protocol: provider.key_protocol.trim().to_string(),
         });
