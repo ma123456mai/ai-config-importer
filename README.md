@@ -1,21 +1,22 @@
 # AI Config Importer
 
-The plugin uses the official CC-SWITCH application icon from the public
-[CC-SWITCH repository](https://github.com/farion1231/cc-switch).
+This DBX plugin imports AI provider configurations from CC-SWITCH or Magpie.
+The plugin retains the `cc-switch` plugin ID and `ai-config-import` capability
+for compatibility with DBX installations.
 
-This public DBX plugin imports AI provider configurations from CC-SWITCH into
-DBX. It reads the local CC-SWITCH SQLite database. The source is public because
-the plugin handles API keys while reading the database.
+For CC-SWITCH, the DBX host supplies the local SQLite database path and the
+plugin opens it read-only. For Magpie, the plugin reads `providers.json` from
+`$XDG_CONFIG_HOME/magpie/providers.json`, or from
+`~/.config/magpie/providers.json` when `XDG_CONFIG_HOME` is not set. The plugin
+does not modify either source or send credentials over the network.
 
-The DBX host supplies the database path through the `ai-config-import`
-capability. The importer opens the database read-only and returns the DBX AI
-configuration JSON protocol. It does not write to CC-SWITCH or send
-credentials over the network.
+Each configured Magpie API key is imported for each matching configured API
+protocol. Disabled keys and hidden providers are skipped. Provider model lists
+and custom headers are preserved; an empty model list stays empty.
 
 The native candidate is built for the DBX Store targets currently supported by
-the official release workflow: `darwin-arm64`, `darwin-x64`, `windows-x64`,
-`linux-x64`, and `linux-arm64`. Windows ARM64 is not claimed because the
-official workflow does not currently provide a Windows ARM64 runner.
+the release workflow: `darwin-arm64`, `darwin-x64`, `windows-x64`, `linux-x64`,
+and `linux-arm64`.
 
 ## Development
 

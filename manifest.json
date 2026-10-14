@@ -3,9 +3,9 @@
   "manifest_version": 1,
   "id": "cc-switch",
   "name": "AI Config Importer",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "publisher": "ma123456mai",
-  "description": "Import AI provider configurations from CC-SWITCH into DBX.",
+  "description": "Import AI provider configurations from CC-SWITCH or Magpie into DBX.",
   "icon": "assets/plugin.png",
   "source": "https://github.com/ma123456mai/ai-config-importer",
   "homepage": "https://github.com/ma123456mai/ai-config-importer",
@@ -29,7 +29,7 @@
   "localizations": {
     "zh-CN": {
       "name": "AI 配置导入",
-      "description": "从 CC-SWITCH 导入 AI 提供商配置到 DBX。"
+      "description": "从 CC-SWITCH 或 Magpie 导入 AI 提供商配置到 DBX。"
     }
   }
 }
