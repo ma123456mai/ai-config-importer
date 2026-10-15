@@ -23,6 +23,33 @@ const IMPORT_MAGPIE_METHOD: &str = "import_magpie_ai_configs";
 #[serde(rename_all = "camelCase")]
 struct ImportRequest {
     database_path: String,
+    #[serde(default)]
+    settings_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CcSwitchSettings {
+    #[serde(default)]
+    visible_apps: Option<HashMap<String, bool>>,
+}
+
+impl CcSwitchSettings {
+    fn is_app_visible(&self, app_type: &str) -> bool {
+        let configured_visibility = self.visible_apps.as_ref().and_then(|visible_apps| {
+            let aliases: &[&str] = match app_type {
+                "claude-desktop" | "claude_desktop" | "claudeDesktop" => {
+                    &["claude-desktop", "claudeDesktop", "claude_desktop"]
+                }
+                _ => &[app_type],
+            };
+            aliases
+                .iter()
+                .find_map(|key| visible_apps.get(*key).copied())
+        });
+
+        configured_visibility.unwrap_or_else(|| app_type != "hermes")
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -226,8 +253,11 @@ impl PluginHandler for Importer {
         }
         let request: ImportRequest = serde_json::from_value(params)
             .map_err(|error| dbx_plugin_sdk::PluginError::new(-32602, error.to_string()))?;
-        let result = import_from_path(Path::new(&request.database_path))
-            .map_err(|error| dbx_plugin_sdk::PluginError::new(-32010, error))?;
+        let result = import_from_path(
+            Path::new(&request.database_path),
+            request.settings_path.as_deref().map(Path::new),
+        )
+        .map_err(|error| dbx_plugin_sdk::PluginError::new(-32010, error))?;
         serde_json::to_value(result)
             .map_err(|error| dbx_plugin_sdk::PluginError::new(-32603, error.to_string()))
     }
@@ -235,19 +265,34 @@ impl PluginHandler for Importer {
 
 fn main() -> std::io::Result<()> {
     PluginServer::new(
-        PluginMetadata::new("cc-switch", "0.2.9").with_capability("ai-config-import"),
+        PluginMetadata::new("cc-switch", "0.2.10").with_capability("ai-config-import"),
         Importer,
     )
     .serve()
 }
 
-fn import_from_path(path: &Path) -> Result<ImportResult, String> {
+fn import_from_path(path: &Path, settings_path: Option<&Path>) -> Result<ImportResult, String> {
     if !path.is_file() {
         return Err("ccSwitchNotInstalled".to_string());
     }
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|error| format!("ccSwitchOpenFailed:{error}"))?;
-    import_from_connection(&connection)
+    let settings = read_cc_switch_settings(settings_path)?;
+    import_from_connection_with_settings(&connection, &settings)
+}
+
+fn read_cc_switch_settings(path: Option<&Path>) -> Result<CcSwitchSettings, String> {
+    let Some(path) = path else {
+        return Ok(CcSwitchSettings::default());
+    };
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CcSwitchSettings::default());
+        }
+        Err(_) => return Err("ccSwitchSettingsReadFailed".to_string()),
+    };
+    serde_json::from_str(&contents).map_err(|_| "ccSwitchSettingsInvalid".to_string())
 }
 
 fn import_magpie_from_path(path: &Path) -> Result<ImportResult, String> {
@@ -918,7 +963,15 @@ fn magpie_models(provider: &MagpieProvider) -> Vec<AiModelListItem> {
         .collect()
 }
 
+#[cfg(test)]
 fn import_from_connection(connection: &Connection) -> Result<ImportResult, String> {
+    import_from_connection_with_settings(connection, &CcSwitchSettings::default())
+}
+
+fn import_from_connection_with_settings(
+    connection: &Connection,
+    settings: &CcSwitchSettings,
+) -> Result<ImportResult, String> {
     let providers_table_exists: bool = connection
         .query_row(
             "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'providers')",
@@ -954,6 +1007,9 @@ fn import_from_connection(connection: &Connection) -> Result<ImportResult, Strin
     for row in rows {
         let (app_type, name, settings_config) =
             row.map_err(|error| format!("ccSwitchReadFailed:{error}"))?;
+        if !settings.is_app_visible(&app_type) {
+            continue;
+        }
         match import_provider(&app_type, &settings_config) {
             Ok(Some(config)) => result.configs.push(AiConfigItem {
                 id: format!("cc-switch-{app_type}-{}", result.configs.len()),
@@ -1568,8 +1624,59 @@ mod tests {
 
     #[test]
     fn reports_missing_database_path() {
-        let error = import_from_path(Path::new("/definitely/missing/cc-switch.db")).unwrap_err();
+        let error =
+            import_from_path(Path::new("/definitely/missing/cc-switch.db"), None).unwrap_err();
         assert_eq!(error, "ccSwitchNotInstalled");
+    }
+
+    #[test]
+    fn omits_hidden_cc_switch_apps_from_import_results() {
+        let connection = create_providers_database();
+        connection
+            .execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, sort_index, is_current)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params!["opencode-profile", "opencode", "OpenCode Profile", "{}", 3, 0],
+            )
+            .unwrap();
+        let settings: CcSwitchSettings = serde_json::from_value(serde_json::json!({
+            "visibleApps": {
+                "codex": true,
+                "claude": false,
+                "gemini": true,
+                "opencode": false
+            }
+        }))
+        .unwrap();
+
+        let result = import_from_connection_with_settings(&connection, &settings).unwrap();
+
+        assert_eq!(result.configs.len(), 2);
+        assert!(result.skipped.is_empty());
+        assert_eq!(
+            result
+                .configs
+                .iter()
+                .map(|item| item.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Codex Gateway", "Gemini Gateway"]
+        );
+    }
+
+    #[test]
+    fn honors_cc_switch_visibility_aliases_and_legacy_defaults() {
+        let settings: CcSwitchSettings = serde_json::from_value(serde_json::json!({
+            "visibleApps": {
+                "claudeDesktop": false,
+                "hermes": true
+            }
+        }))
+        .unwrap();
+
+        assert!(!settings.is_app_visible("claude-desktop"));
+        assert!(settings.is_app_visible("hermes"));
+        assert!(CcSwitchSettings::default().is_app_visible("codex"));
+        assert!(!CcSwitchSettings::default().is_app_visible("hermes"));
     }
 
     #[test]

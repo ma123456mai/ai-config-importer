@@ -1,17 +1,17 @@
 {
   "name": "AI Config Importer",
-  "description": "Import AI provider configurations from CC-SWITCH into DBX.",
+  "description": "Import AI provider configurations from CC-SWITCH or Magpie into DBX.",
   "icon": "assets/plugin.png",
   "tags": ["ai", "configuration", "cc-switch"],
   "permissions": [],
-  "source": "https://github.com/ma123456mai/ai-config-importer/tree/v0.1.4",
+  "source": "https://github.com/ma123456mai/ai-config-importer/tree/v0.2.10",
   "homepage": "https://github.com/ma123456mai/ai-config-importer",
   "license": "Apache-2.0",
-  "releaseNotes": "Rename the plugin to AI Config Importer. Import AI provider configurations from CC-SWITCH into DBX.",
+  "releaseNotes": "Hide source entries hidden in CC-SWITCH and Magpie. Import Magpie's live Codex model catalog with distinct model labels.",
   "localizations": {
     "zh-CN": {
       "name": "AI 配置导入",
-      "description": "从 CC-SWITCH 导入 AI 提供商配置到 DBX。"
+      "description": "从 CC-SWITCH 或 Magpie 导入 AI 提供商配置到 DBX。"
     }
   }
 }
