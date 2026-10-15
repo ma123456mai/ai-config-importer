@@ -5,9 +5,11 @@ The plugin retains the `cc-switch` plugin ID and `ai-config-import` capability
 for compatibility with DBX installations.
 
 For CC-SWITCH, the DBX host supplies the local SQLite database path and the
-plugin opens it read-only. The import dialog lets users choose an app type and
-shows only profiles for that CC-SWITCH page, including unsupported profiles as
-disabled entries with a reason. For Magpie, the plugin reads `providers.json` from
+plugin opens it read-only. The import dialog lists the saved provider
+configurations returned by CC-SWITCH across app types. Configurations DBX
+supports can be selected, while unsupported configurations remain visible with
+a reason. Source counts use the same saved configurations and unsupported
+entries. For Magpie, the plugin reads `providers.json` from
 `$XDG_CONFIG_HOME/magpie/providers.json`, or from
 `~/.config/magpie/providers.json` when `XDG_CONFIG_HOME` is not set. The plugin
 does not modify either source, copy Magpie OAuth credentials, or send source
