@@ -2,7 +2,7 @@
   <img src="assets/plugin.png" width="128" alt="AI Config Importer icon" />
 </p>
 
-<p align="center">[English](README.md) · [简体中文](README.zh-CN.md)</p>
+<p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
 
 # AI Config Importer
 
