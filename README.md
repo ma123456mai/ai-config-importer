@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="assets/plugin.png" width="128" alt="AI Config Importer icon" />
+</p>
+
+<p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
+
 # AI Config Importer
 
 This DBX plugin imports AI provider configurations from CC-SWITCH or Magpie.
