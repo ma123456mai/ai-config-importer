@@ -265,7 +265,7 @@ impl PluginHandler for Importer {
 
 fn main() -> std::io::Result<()> {
     PluginServer::new(
-        PluginMetadata::new("cc-switch", "0.2.10").with_capability("ai-config-import"),
+        PluginMetadata::new("cc-switch", env!("CARGO_PKG_VERSION")).with_capability("ai-config-import"),
         Importer,
     )
     .serve()
