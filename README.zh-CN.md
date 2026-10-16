@@ -1,4 +1,10 @@
-# AI Config Importer
+<p align="center">
+  <img src="assets/plugin.png" width="128" alt="AI 配置导入插件图标" />
+</p>
+
+<p align="center">[English](README.md) · [简体中文](README.zh-CN.md)</p>
+
+# AI 配置导入
 
 这是一个 DBX 插件，可从 CC-SWITCH 或 Magpie 导入 AI 提供商配置。
 为兼容已有 DBX 安装，插件继续使用 `cc-switch` 插件 ID 和
