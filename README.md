@@ -23,6 +23,11 @@ Magpie, the plugin reads `providers.json` from
 does not modify either source, copy Magpie OAuth credentials, or send source
 API keys over the network.
 
+CC-SWITCH Codex profiles need a readable OpenAI API key. If a profile does not
+specify an endpoint, the importer uses `https://api.openai.com/v1`; if it does
+not specify a model, the imported default model stays unset. Codex account
+OAuth sessions are not imported as API keys.
+
 Each enabled Magpie API key is imported for its explicit key protocol, or the
 provider's selected `baseAPI` when the key has no protocol. Disabled keys are
 skipped, disabled visible providers appear as unsupported entries, and hidden

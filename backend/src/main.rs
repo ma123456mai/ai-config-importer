@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 const DEFAULT_ANTHROPIC_ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
+const DEFAULT_OPENAI_ENDPOINT: &str = "https://api.openai.com/v1";
 const DEFAULT_GEMINI_ENDPOINT: &str = "https://generativelanguage.googleapis.com";
 const DEFAULT_MAGPIE_GATEWAY_PORT: u16 = 3425;
 const MAGPIE_CODEX_GATEWAY_API_KEY: &str = "magpie-dbx";
@@ -1063,35 +1064,29 @@ fn import_codex(settings: &Value) -> Result<Option<AiConfig>, String> {
                 &["base_url", "baseUrl", "OPENAI_BASE_URL"],
                 &["auth", "env", "config"],
             )
-        });
-    let model = document.string("model").or_else(|| {
-        find_string(
-            settings,
-            &["model", "model_name", "modelName"],
-            &["config", "env"],
-        )
-    });
-    let api_key = find_named_string(
+        })
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_OPENAI_ENDPOINT.to_string());
+    let model = document
+        .string("model")
+        .or_else(|| {
+            find_string(
+                settings,
+                &["model", "model_name", "modelName"],
+                &["config", "env"],
+            )
+        })
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_default();
+    let Some((_, api_key)) = find_named_string(
         settings,
         &["OPENAI_API_KEY", "api_key", "apiKey", "API_KEY"],
         &["auth", "env", "config"],
-    );
-    let requires_openai_auth = document
-        .bool(&format!("{provider_section}.requires_openai_auth"))
-        .unwrap_or(false);
-    let Some(endpoint) = endpoint.filter(|value| !value.trim().is_empty()) else {
+    )
+    .filter(|(_, value)| !value.trim().is_empty())
+    else {
         return Ok(None);
     };
-    let Some(model) = model.filter(|value| !value.trim().is_empty()) else {
-        return Ok(None);
-    };
-    if requires_openai_auth
-        && api_key
-            .as_ref()
-            .is_none_or(|(_, value)| value.trim().is_empty())
-    {
-        return Ok(None);
-    }
     let api_style = document
         .string(&format!("{provider_section}.wire_api"))
         .or_else(|| document.string("wire_api"))
@@ -1100,7 +1095,7 @@ fn import_codex(settings: &Value) -> Result<Option<AiConfig>, String> {
         .unwrap_or_default();
     Ok(Some(new_config(
         AiProvider::OpenaiCompatible,
-        api_key.map(|(_, value)| value).unwrap_or_default(),
+        api_key,
         endpoint,
         model,
         api_style,
@@ -1275,7 +1270,6 @@ struct TomlDocument {
 #[derive(Clone)]
 enum TomlScalar {
     String(String),
-    Bool(bool),
 }
 
 impl TomlDocument {
@@ -1286,12 +1280,6 @@ impl TomlDocument {
         }
     }
 
-    fn bool(&self, key: &str) -> Option<bool> {
-        match self.values.get(&normalize_toml_key(key)) {
-            Some(TomlScalar::Bool(value)) => Some(*value),
-            _ => None,
-        }
-    }
 }
 
 fn parse_codex_toml(input: &str) -> Result<TomlDocument, String> {
@@ -1334,12 +1322,6 @@ fn parse_codex_toml(input: &str) -> Result<TomlDocument, String> {
 }
 
 fn parse_toml_scalar(value: &str) -> Option<TomlScalar> {
-    if value.eq_ignore_ascii_case("true") {
-        return Some(TomlScalar::Bool(true));
-    }
-    if value.eq_ignore_ascii_case("false") {
-        return Some(TomlScalar::Bool(false));
-    }
     parse_toml_string(value).map(TomlScalar::String)
 }
 

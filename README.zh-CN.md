@@ -20,6 +20,10 @@ CC-SWITCH 隐藏的应用类型不会出现在导入列表中；可见应用类�
 配置会一起列出。DBX 支持的配置可以勾选导入，不支持的可见配置仍会列出，
 并显示不支持原因。来源计数也按照这些可见配置及不支持项统计。
 
+CC-SWITCH 的 Codex 配置需要能读取到 OpenAI API Key。未填写接口地址时，
+导入器使用 `https://api.openai.com/v1`；未明确指定模型时，导入后的默认模型
+保持未设置。Codex 账号的 OAuth 登录会话不会作为 API Key 导入。
+
 ### Magpie
 
 插件从以下位置读取 `providers.json`：

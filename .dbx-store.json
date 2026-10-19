@@ -4,10 +4,10 @@
   "icon": "assets/plugin.png",
   "tags": ["ai", "configuration", "cc-switch"],
   "permissions": [],
-  "source": "https://github.com/ma123456mai/ai-config-importer/tree/v0.2.10",
+  "source": "https://github.com/ma123456mai/ai-config-importer/tree/v0.2.11",
   "homepage": "https://github.com/ma123456mai/ai-config-importer",
   "license": "Apache-2.0",
-  "releaseNotes": "Hide source entries hidden in CC-SWITCH and Magpie. Import Magpie's live Codex model catalog with distinct model labels.",
+  "releaseNotes": "Use Claude-style endpoint and model defaults for CC-SWITCH Codex profiles while requiring an API key.",
   "localizations": {
     "zh-CN": {
       "name": "AI 配置导入",
