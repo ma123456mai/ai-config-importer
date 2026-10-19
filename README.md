@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/plugin.png" width="128" alt="AI Config Importer icon" />
+  <img src="docs/readme-icon.svg" width="128" alt="AI Config Importer icon" />
 </p>
 
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
@@ -7,8 +7,11 @@
 # AI Config Importer
 
 This DBX plugin imports AI provider configurations from CC-SWITCH or Magpie.
-The plugin retains the `cc-switch` plugin ID and `ai-config-import` capability
-for compatibility with DBX installations.
+The importer entry requires DBX 0.6.45 or newer. The manifest declares the
+`ai-config-import` capability that makes the entry available in the AI provider
+settings, and the backend advertises the same capability during initialization.
+Older DBX builds do not include this importer entry and may reject the manifest
+capability field. The plugin retains the stable `cc-switch` plugin ID.
 
 For CC-SWITCH, the DBX host supplies the local SQLite database path and the
 `settings.json` path. The plugin opens the database read-only and reads only
@@ -22,6 +25,20 @@ Magpie, the plugin reads `providers.json` from
 `~/.config/magpie/providers.json` when `XDG_CONFIG_HOME` is not set. The plugin
 does not modify either source, copy Magpie OAuth credentials, or send source
 API keys over the network.
+
+CC-SWITCH Codex profiles with an OpenAI API key are imported as API-backed
+providers. If a profile does not specify an endpoint, the importer uses
+`https://api.openai.com/v1`; if it does not specify a model, the imported
+default model stays unset.
+
+The `OpenAI Official` profile can also be imported when it is the current
+Codex profile. It is mapped to DBX's existing Codex CLI provider, which uses
+the installed `codex` executable and its current local login/configuration.
+This does not copy OAuth credentials into DBX. Switch CC-SWITCH to
+`OpenAI Official` and refresh the import list first. The imported entry follows
+the active Codex CLI configuration, so changing the active CC-SWITCH Codex
+profile can change which account or route it uses. If that configuration points
+to a CC-SWITCH local route, keep that route service running while DBX uses it.
 
 Each enabled Magpie API key is imported for its explicit key protocol, or the
 provider's selected `baseAPI` when the key has no protocol. Disabled keys are
