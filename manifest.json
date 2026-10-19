@@ -6,11 +6,11 @@
   "version": "0.2.11",
   "publisher": "ma123456mai",
   "description": "Import AI provider configurations from CC-SWITCH or Magpie into DBX.",
-  "icon": "assets/plugin.png",
+  "icon": "assets/plugin.svg",
   "source": "https://github.com/ma123456mai/ai-config-importer",
   "homepage": "https://github.com/ma123456mai/ai-config-importer",
   "engines": {
-    "dbx": ">=0.6.15",
+    "dbx": ">=0.6.45",
     "host_api": "1"
   },
   "permissions": [],

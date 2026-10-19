@@ -168,6 +168,8 @@ enum AiProvider {
     Gemini,
     #[serde(rename = "openai-compatible")]
     OpenaiCompatible,
+    #[serde(rename = "codex-cli")]
+    CodexCli,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -219,6 +221,8 @@ struct AiConfig {
     skip_tls_verify: bool,
     enable_thinking: bool,
     reasoning_level: AiReasoningLevel,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    codex_cli_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -986,7 +990,7 @@ fn import_from_connection_with_settings(
 
     let mut statement = connection
         .prepare(
-            "SELECT app_type, name, settings_config
+            "SELECT id, app_type, name, settings_config, is_current
              FROM providers
              ORDER BY is_current DESC, sort_index ASC, name COLLATE NOCASE ASC",
         )
@@ -997,6 +1001,8 @@ fn import_from_connection_with_settings(
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, bool>(4)?,
             ))
         })
         .map_err(|error| format!("ccSwitchReadFailed:{error}"))?;
@@ -1006,12 +1012,13 @@ fn import_from_connection_with_settings(
         skipped: Vec::new(),
     };
     for row in rows {
-        let (app_type, name, settings_config) =
+        let (provider_id, app_type, name, settings_config, is_current) =
             row.map_err(|error| format!("ccSwitchReadFailed:{error}"))?;
         if !settings.is_app_visible(&app_type) {
             continue;
         }
-        match import_provider(&app_type, &settings_config) {
+        let official_codex = app_type == "codex" && is_cc_switch_codex_official(&provider_id, &name);
+        match import_provider(&app_type, &settings_config, official_codex, is_current) {
             Ok(Some(config)) => result.configs.push(AiConfigItem {
                 id: format!("cc-switch-{app_type}-{}", result.configs.len()),
                 name,
@@ -1033,18 +1040,27 @@ fn import_from_connection_with_settings(
     Ok(result)
 }
 
-fn import_provider(app_type: &str, raw_settings: &str) -> Result<Option<AiConfig>, String> {
+fn import_provider(
+    app_type: &str,
+    raw_settings: &str,
+    official_codex: bool,
+    is_current: bool,
+) -> Result<Option<AiConfig>, String> {
     let settings: Value = serde_json::from_str(raw_settings)
         .map_err(|_| "ccSwitchInvalidProviderConfig".to_string())?;
     match app_type {
-        "codex" => import_codex(&settings),
+        "codex" => import_codex_profile(&settings, official_codex, is_current),
         "claude" => import_claude(&settings),
         "gemini" => import_gemini(&settings),
         _ => Err("ccSwitchUnsupportedProviderType".to_string()),
     }
 }
 
-fn import_codex(settings: &Value) -> Result<Option<AiConfig>, String> {
+fn import_codex_profile(
+    settings: &Value,
+    official_codex: bool,
+    is_current: bool,
+) -> Result<Option<AiConfig>, String> {
     let config_text = settings
         .get("config")
         .and_then(Value::as_str)
@@ -1085,7 +1101,25 @@ fn import_codex(settings: &Value) -> Result<Option<AiConfig>, String> {
     )
     .filter(|(_, value)| !value.trim().is_empty())
     else {
-        return Ok(None);
+        if !official_codex {
+            return Ok(None);
+        }
+        if !is_current {
+            return Err(
+                "请先在 CC-SWITCH 将 OpenAI Official 切换为当前 Codex 配置，再刷新导入。"
+                    .to_string(),
+            );
+        }
+        let mut config = new_config(
+            AiProvider::CodexCli,
+            String::new(),
+            String::new(),
+            model,
+            AiApiStyle::Responses,
+            AiAuthMethod::Bearer,
+        );
+        config.codex_cli_path = Some("codex".to_string());
+        return Ok(Some(config));
     };
     let api_style = document
         .string(&format!("{provider_section}.wire_api"))
@@ -1101,6 +1135,20 @@ fn import_codex(settings: &Value) -> Result<Option<AiConfig>, String> {
         api_style,
         AiAuthMethod::Bearer,
     )))
+}
+
+fn is_cc_switch_codex_official(provider_id: &str, name: &str) -> bool {
+    let normalized_id = provider_id
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+    let normalized_name = name.trim().to_ascii_lowercase();
+    matches!(
+        normalized_id.as_str(),
+        "codexofficial" | "openaiofficial" | "officialcodex"
+    ) || normalized_name == "openai official"
+        || name.trim() == "OpenAI 官方"
 }
 
 fn import_claude(settings: &Value) -> Result<Option<AiConfig>, String> {
@@ -1223,6 +1271,7 @@ fn new_config(
         skip_tls_verify: false,
         enable_thinking: true,
         reasoning_level: AiReasoningLevel::Default,
+        codex_cli_path: None,
     }
 }
 

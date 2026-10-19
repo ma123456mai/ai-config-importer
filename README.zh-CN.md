@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/plugin.png" width="128" alt="AI 配置导入插件图标" />
+  <img src="docs/readme-icon.svg" width="128" alt="AI 配置导入插件图标" />
 </p>
 
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
@@ -7,8 +7,10 @@
 # AI 配置导入
 
 这是一个 DBX 插件，可从 CC-SWITCH 或 Magpie 导入 AI 提供商配置。
-为兼容已有 DBX 安装，插件继续使用 `cc-switch` 插件 ID 和
-`ai-config-import` 能力标识。
+导入入口要求 DBX 0.6.45 或更高版本。插件清单声明
+`ai-config-import` 能力，以便在 AI 提供商设置中显示入口；后端也会在初始化握手中
+声明相同能力。较早的 DBX 版本没有这个导入入口，并且可能会拒绝清单中的能力字段。
+插件继续使用稳定的 `cc-switch` ID。
 
 ## 配置读取与导入
 
@@ -20,9 +22,16 @@ CC-SWITCH 隐藏的应用类型不会出现在导入列表中；可见应用类�
 配置会一起列出。DBX 支持的配置可以勾选导入，不支持的可见配置仍会列出，
 并显示不支持原因。来源计数也按照这些可见配置及不支持项统计。
 
-CC-SWITCH 的 Codex 配置需要能读取到 OpenAI API Key。未填写接口地址时，
-导入器使用 `https://api.openai.com/v1`；未明确指定模型时，导入后的默认模型
-保持未设置。Codex 账号的 OAuth 登录会话不会作为 API Key 导入。
+带有 OpenAI API Key 的 CC-SWITCH Codex 配置会作为 API 提供商导入。未填写
+接口地址时，导入器使用 `https://api.openai.com/v1`；未明确指定模型时，
+导入后的默认模型保持未设置。
+
+当前 Codex 配置为 `OpenAI Official` 时，也可以导入。插件会将它映射到 DBX
+已有的 Codex CLI 提供商，由本机安装的 `codex` 程序使用当前 Codex 登录和配置；
+OAuth 凭据不会复制到 DBX。导入前请先在 CC-SWITCH 中切换到 `OpenAI Official`
+并刷新导入列表。导入项会跟随当前 Codex CLI 配置，因此之后切换 CC-SWITCH 的
+Codex 配置可能改变它使用的账号或路由。如果该配置指向 CC-SWITCH 本机路由，
+使用期间需要保持路由服务运行。
 
 ### Magpie
 
