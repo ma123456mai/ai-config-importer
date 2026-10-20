@@ -3,7 +3,7 @@
   "manifest_version": 1,
   "id": "cc-switch",
   "name": "AI Config Importer",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "publisher": "ma123456mai",
   "description": "Import AI provider configurations from CC-SWITCH or Magpie into DBX.",
   "icon": "assets/plugin.svg",

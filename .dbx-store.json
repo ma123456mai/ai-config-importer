@@ -4,10 +4,10 @@
   "icon": "assets/plugin.svg",
   "tags": ["ai", "configuration", "cc-switch"],
   "permissions": [],
-  "source": "https://github.com/ma123456mai/ai-config-importer/tree/v0.2.11",
+  "source": "https://github.com/ma123456mai/ai-config-importer/tree/v0.2.12",
   "homepage": "https://github.com/ma123456mai/ai-config-importer",
   "license": "Apache-2.0",
-  "releaseNotes": "Use Claude-style endpoint and model defaults for CC-SWITCH Codex profiles while requiring an API key.",
+  "releaseNotes": "Use a consistent black mark on a white rounded-square background across DBX.",
   "localizations": {
     "zh-CN": {
       "name": "AI 配置导入",
